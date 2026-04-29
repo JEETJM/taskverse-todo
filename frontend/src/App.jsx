@@ -10,13 +10,10 @@ import {
   Search,
   Sparkles,
   CalendarDays,
-  // GithubIcon,
-  // Linkedin,
-  // Instagram,
   Rocket,
 } from "lucide-react";
 
-const API_URL = "/api/todos";
+const API_URL = "http://localhost:8080/api/todos";
 
 function App() {
   const [todos, setTodos] = useState([]);
@@ -37,18 +34,15 @@ function App() {
   const fetchTodos = async () => {
     try {
       const res = await axios.get(API_URL);
-      setTodos(res.data);
-    } catch {
+      setTodos(res.data.todos || res.data.tasks || res.data || []);
+    } catch (error) {
+      console.log("FETCH ERROR:", error.response?.data || error.message);
       alert("Backend server not connected");
     }
   };
 
   useEffect(() => {
-    const loadData = async () => {
-      await fetchTodos();
-    };
-
-    loadData();
+    fetchTodos();
   }, []);
 
   const handleChange = (e) => {
@@ -83,13 +77,16 @@ function App() {
     try {
       if (editingId) {
         await axios.put(`${API_URL}/${editingId}`, payload);
+        alert("Task updated successfully");
       } else {
         await axios.post(API_URL, payload);
+        alert("Task added successfully");
       }
 
       resetForm();
       fetchTodos();
     } catch (error) {
+      console.log("SAVE ERROR:", error.response?.data || error.message);
       alert(error.response?.data?.message || "Task save failed");
     }
   };
@@ -112,12 +109,15 @@ function App() {
     try {
       await axios.delete(`${API_URL}/${id}`);
       fetchTodos();
-    } catch {
+    } catch (error) {
+      console.log("DELETE ERROR:", error.response?.data || error.message);
       alert("Delete failed");
     }
   };
 
-  const filteredTodos = todos.filter((todo) => {
+  const safeTodos = Array.isArray(todos) ? todos : [];
+
+  const filteredTodos = safeTodos.filter((todo) => {
     const title = todo.title || "";
     const description = todo.description || "";
 
@@ -126,17 +126,18 @@ function App() {
       description.toLowerCase().includes(search.toLowerCase());
 
     const statusMatch = statusFilter === "All" || todo.status === statusFilter;
-
     const priorityMatch =
       priorityFilter === "All" || todo.priority === priorityFilter;
 
     return searchMatch && statusMatch && priorityMatch;
   });
 
-  const totalTasks = todos.length;
-  const pendingTasks = todos.filter((todo) => todo.status === "Pending").length;
-  const completedTasks = todos.filter(
-    (todo) => todo.status === "Completed",
+  const totalTasks = safeTodos.length;
+  const pendingTasks = safeTodos.filter(
+    (todo) => todo.status === "Pending"
+  ).length;
+  const completedTasks = safeTodos.filter(
+    (todo) => todo.status === "Completed"
   ).length;
 
   return (
@@ -155,7 +156,7 @@ function App() {
 
         <div className="nav-links">
           <a href="https://github.com/JEETJM" target="_blank" rel="noreferrer">
-             GitHub
+            GitHub
           </a>
         </div>
       </nav>
@@ -170,8 +171,7 @@ function App() {
 
           <p>
             A professional MERN stack todo website with beautiful UI, task
-            priorities, categories, status filters, due dates and cloud
-            database.
+            priorities, categories, status filters, due dates and cloud database.
           </p>
 
           <div className="hero-buttons">
@@ -332,12 +332,13 @@ function App() {
           </div>
 
           <div className="task-list">
-            {filteredTodos.length === 0 ?
+            {filteredTodos.length === 0 ? (
               <div className="empty-box">
                 <h3>No tasks found</h3>
                 <p>Create your first beautiful task now.</p>
               </div>
-            : filteredTodos.map((todo) => (
+            ) : (
+              filteredTodos.map((todo) => (
                 <div className="task-card" key={todo._id}>
                   <div className="task-content">
                     <div className="task-title-row">
@@ -389,7 +390,7 @@ function App() {
                   </div>
                 </div>
               ))
-            }
+            )}
           </div>
         </section>
       </main>
@@ -425,7 +426,7 @@ function App() {
             target="_blank"
             rel="noreferrer"
           >
-           Instagram
+            Instagram
           </a>
         </div>
       </footer>
