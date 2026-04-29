@@ -13,8 +13,10 @@ import {
   Rocket,
 } from "lucide-react";
 
-const API_URL = "http://localhost:8080/api/todos";
-
+const API_URL =
+  import.meta.env.PROD
+    ? "/api/todos"
+    : "http://localhost:8080/api/todos";
 function App() {
   const [todos, setTodos] = useState([]);
   const [search, setSearch] = useState("");
