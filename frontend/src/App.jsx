@@ -16,8 +16,7 @@ import {
   Rocket,
 } from "lucide-react";
 
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8080/api/todos";
+const API_URL = "/api/todos";
 
 function App() {
   const [todos, setTodos] = useState([]);
