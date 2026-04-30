@@ -10,14 +10,29 @@ import {
   Search,
   Sparkles,
   CalendarDays,
-  Rocket,
+  Rocket
 } from "lucide-react";
 
-const API_URL =
-  import.meta.env.PROD
-    ? "/api/todos"
-    : "http://localhost:8080/api/todos";
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
+
 function App() {
+  const [user, setUser] = useState(null);
+  const [authMode, setAuthMode] = useState("login");
+  const [authForm, setAuthForm] = useState({
+    name: "",
+    email: "",
+    password: ""
+  });
+
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileEdit, setProfileEdit] = useState(false);
+  const [avatarFile, setAvatarFile] = useState(null);
+
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    about: ""
+  });
+
   const [todos, setTodos] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -30,25 +45,170 @@ function App() {
     category: "Personal",
     priority: "Medium",
     status: "Pending",
-    dueDate: "",
+    dueDate: ""
   });
 
-  const fetchTodos = async () => {
+  const token = user?.token || localStorage.getItem("taskverseToken");
+
+  const getAuthHeaders = () => ({
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+
+  const getAvatar = () => {
+    return (
+      user?.avatar ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        user?.name || "User"
+      )}&background=7c3aed&color=fff&bold=true`
+    );
+  };
+
+  const saveUser = (data) => {
+    localStorage.setItem("taskverseUser", JSON.stringify(data));
+    localStorage.setItem("taskverseToken", data.token);
+    setUser(data);
+  };
+
+  const logout = () => {
+    localStorage.removeItem("taskverseUser");
+    localStorage.removeItem("taskverseToken");
+    setUser(null);
+    setTodos([]);
+    setProfileOpen(false);
+  };
+
+  const handleAuthChange = (e) => {
+    setAuthForm({
+      ...authForm,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+
     try {
-      const res = await axios.get(API_URL);
-      setTodos(res.data.todos || res.data.tasks || res.data || []);
+      const endpoint = authMode === "login" ? "/auth/login" : "/auth/register";
+
+      const payload =
+        authMode === "login"
+          ? {
+              email: authForm.email,
+              password: authForm.password
+            }
+          : authForm;
+
+      const res = await axios.post(`${API_BASE}${endpoint}`, payload);
+
+      saveUser(res.data);
+      setAuthForm({
+        name: "",
+        email: "",
+        password: ""
+      });
     } catch (error) {
-      console.log("FETCH ERROR:", error.response?.data || error.message);
-      alert("Backend server not connected");
+      alert(error.response?.data?.message || "Authentication failed");
+    }
+  };
+
+  const fetchTodos = async () => {
+    if (!token) return;
+
+    try {
+      const res = await axios.get(`${API_BASE}/todos`, getAuthHeaders());
+      setTodos(res.data);
+    } catch (error) {
+      alert(error.response?.data?.message || "Failed to load tasks");
+
+      if (error.response?.status === 401) {
+        logout();
+      }
     }
   };
 
   useEffect(() => {
-    fetchTodos();
+    const storedUser = localStorage.getItem("taskverseUser");
+
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      fetchTodos();
+    }
+  }, [user]);
+
+  const openProfileEdit = () => {
+    setProfileForm({
+      name: user.name || "",
+      about: user.about || ""
+    });
+
+    setAvatarFile(null);
+    setProfileEdit(true);
+    setProfileOpen(false);
+  };
+
+  const handleProfileChange = (e) => {
+    setProfileForm({
+      ...profileForm,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const uploadAvatar = async () => {
+    if (!avatarFile) return null;
+
+    const formData = new FormData();
+    formData.append("avatar", avatarFile);
+
+    const res = await axios.put(
+      `${API_BASE}/auth/profile/avatar`,
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data"
+        }
+      }
+    );
+
+    saveUser(res.data);
+    return res.data;
+  };
+
+  const handleProfileUpdate = async (e) => {
+    e.preventDefault();
+
+    try {
+      const res = await axios.put(
+        `${API_BASE}/auth/profile`,
+        profileForm,
+        getAuthHeaders()
+      );
+
+      saveUser(res.data);
+
+      if (avatarFile) {
+        await uploadAvatar();
+      }
+
+      setAvatarFile(null);
+      setProfileEdit(false);
+    } catch (error) {
+      alert(error.response?.data?.message || "Profile update failed");
+    }
+  };
+
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value
+    });
   };
 
   const resetForm = () => {
@@ -58,7 +218,7 @@ function App() {
       category: "Personal",
       priority: "Medium",
       status: "Pending",
-      dueDate: "",
+      dueDate: ""
     });
     setEditingId(null);
   };
@@ -71,37 +231,39 @@ function App() {
       return;
     }
 
-    const payload = {
-      ...form,
-      dueDate: form.dueDate || null,
-    };
-
     try {
+      const payload = {
+        ...form,
+        dueDate: form.dueDate || null
+      };
+
       if (editingId) {
-        await axios.put(`${API_URL}/${editingId}`, payload);
-        alert("Task updated successfully");
+        await axios.put(
+          `${API_BASE}/todos/${editingId}`,
+          payload,
+          getAuthHeaders()
+        );
       } else {
-        await axios.post(API_URL, payload);
-        alert("Task added successfully");
+        await axios.post(`${API_BASE}/todos`, payload, getAuthHeaders());
       }
 
       resetForm();
       fetchTodos();
     } catch (error) {
-      console.log("SAVE ERROR:", error.response?.data || error.message);
       alert(error.response?.data?.message || "Task save failed");
     }
   };
 
   const handleEdit = (todo) => {
     setEditingId(todo._id);
+
     setForm({
       title: todo.title || "",
       description: todo.description || "",
       category: todo.category || "Personal",
       priority: todo.priority || "Medium",
       status: todo.status || "Pending",
-      dueDate: todo.dueDate ? todo.dueDate.slice(0, 10) : "",
+      dueDate: todo.dueDate ? todo.dueDate.slice(0, 10) : ""
     });
   };
 
@@ -109,17 +271,14 @@ function App() {
     if (!confirm("Delete this task?")) return;
 
     try {
-      await axios.delete(`${API_URL}/${id}`);
+      await axios.delete(`${API_BASE}/todos/${id}`, getAuthHeaders());
       fetchTodos();
     } catch (error) {
-      console.log("DELETE ERROR:", error.response?.data || error.message);
-      alert("Delete failed");
+      alert(error.response?.data?.message || "Delete failed");
     }
   };
 
-  const safeTodos = Array.isArray(todos) ? todos : [];
-
-  const filteredTodos = safeTodos.filter((todo) => {
+  const filteredTodos = todos.filter((todo) => {
     const title = todo.title || "";
     const description = todo.description || "";
 
@@ -128,19 +287,85 @@ function App() {
       description.toLowerCase().includes(search.toLowerCase());
 
     const statusMatch = statusFilter === "All" || todo.status === statusFilter;
+
     const priorityMatch =
       priorityFilter === "All" || todo.priority === priorityFilter;
 
     return searchMatch && statusMatch && priorityMatch;
   });
 
-  const totalTasks = safeTodos.length;
-  const pendingTasks = safeTodos.filter(
-    (todo) => todo.status === "Pending"
-  ).length;
-  const completedTasks = safeTodos.filter(
+  const totalTasks = todos.length;
+  const pendingTasks = todos.filter((todo) => todo.status === "Pending").length;
+  const completedTasks = todos.filter(
     (todo) => todo.status === "Completed"
   ).length;
+
+  if (!user) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <div className="auth-logo">
+            <Rocket size={32} />
+          </div>
+
+          <h1>TaskVerse</h1>
+
+          <p className="auth-subtitle">
+            {authMode === "login"
+              ? "Login to manage your private tasks"
+              : "Create an account to start managing tasks"}
+          </p>
+
+          <form onSubmit={handleAuthSubmit}>
+            {authMode === "register" && (
+              <input
+                type="text"
+                name="name"
+                placeholder="Full Name"
+                value={authForm.name}
+                onChange={handleAuthChange}
+                required
+              />
+            )}
+
+            <input
+              type="email"
+              name="email"
+              placeholder="Email Address"
+              value={authForm.email}
+              onChange={handleAuthChange}
+              required
+            />
+
+            <input
+              type="password"
+              name="password"
+              placeholder="Password"
+              value={authForm.password}
+              onChange={handleAuthChange}
+              required
+            />
+
+            <button type="submit" className="submit-btn">
+              {authMode === "login" ? "Login" : "Create Account"}
+            </button>
+          </form>
+
+          <button
+            className="switch-auth"
+            type="button"
+            onClick={() =>
+              setAuthMode(authMode === "login" ? "register" : "login")
+            }
+          >
+            {authMode === "login"
+              ? "New user? Create account"
+              : "Already have an account? Login"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -152,28 +377,51 @@ function App() {
 
           <div>
             <h2>TaskVerse</h2>
-            <p>MERN Todo Management Website</p>
+            <p>Welcome, {user.name}</p>
           </div>
         </div>
 
-        <div className="nav-links">
-          <a href="https://github.com/JEETJM" target="_blank" rel="noreferrer">
-            GitHub
-          </a>
+        <div className="profile-area">
+          <button
+            className="profile-btn"
+            type="button"
+            onClick={() => setProfileOpen(!profileOpen)}
+          >
+            <img src={getAvatar()} alt="profile" />
+            <span>{user.name}</span>
+          </button>
+
+          {profileOpen && (
+            <div className="profile-menu">
+              <img className="profile-menu-img" src={getAvatar()} alt="profile" />
+
+              <h3>{user.name}</h3>
+              <p>{user.email}</p>
+              <small>{user.about || "MERN Stack Learner"}</small>
+
+              <button type="button" onClick={openProfileEdit}>
+                Edit Profile
+              </button>
+
+              <button type="button" className="logout-menu-btn" onClick={logout}>
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </nav>
 
       <section className="hero">
         <div className="hero-glass">
           <span className="hero-badge">
-            <Sparkles size={16} /> MongoDB Atlas + React + Express
+            <Sparkles size={16} /> Private Todo Dashboard
           </span>
 
-          <h1>Plan Smarter. Work Faster. Finish Better.</h1>
+          <h1>Your Tasks. Your Account. Your Control.</h1>
 
           <p>
-            A professional MERN stack todo website with beautiful UI, task
-            priorities, categories, status filters, due dates and cloud database.
+            Manage your own private todos securely. Only you can view, edit, and
+            delete the tasks created by your account.
           </p>
 
           <div className="hero-buttons">
@@ -229,7 +477,7 @@ function App() {
         <form className="task-form" onSubmit={handleSubmit}>
           <div className="section-title">
             <h2>{editingId ? "Update Task" : "Create Task"}</h2>
-            <p>Add your task details below.</p>
+            <p>Your task will be saved privately under your account.</p>
           </div>
 
           <label>Task Title</label>
@@ -296,7 +544,7 @@ function App() {
           <div className="panel-header">
             <div>
               <h2>All Tasks</h2>
-              <p>Search, filter, edit and delete your tasks.</p>
+              <p>Only your private tasks are visible here.</p>
             </div>
           </div>
 
@@ -337,7 +585,7 @@ function App() {
             {filteredTodos.length === 0 ? (
               <div className="empty-box">
                 <h3>No tasks found</h3>
-                <p>Create your first beautiful task now.</p>
+                <p>Create your first private task now.</p>
               </div>
             ) : (
               filteredTodos.map((todo) => (
@@ -397,6 +645,50 @@ function App() {
         </section>
       </main>
 
+      {profileEdit && (
+        <div className="modal-overlay">
+          <form className="profile-modal" onSubmit={handleProfileUpdate}>
+            <h2>Edit Profile</h2>
+
+            <label>Name</label>
+            <input
+              type="text"
+              name="name"
+              value={profileForm.name}
+              onChange={handleProfileChange}
+              placeholder="Your name"
+            />
+
+            <label>Profile Image</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setAvatarFile(e.target.files[0])}
+            />
+
+            <label>About</label>
+            <textarea
+              name="about"
+              value={profileForm.about}
+              onChange={handleProfileChange}
+              placeholder="Write something about you"
+            />
+
+            <button className="submit-btn" type="submit">
+              Save Profile
+            </button>
+
+            <button
+              className="cancel-btn"
+              type="button"
+              onClick={() => setProfileEdit(false)}
+            >
+              Cancel
+            </button>
+          </form>
+        </div>
+      )}
+
       <footer className="footer">
         <div className="footer-brand">
           <div className="brand-logo">
@@ -407,7 +699,7 @@ function App() {
         </div>
 
         <p>
-          Developed by <strong>Jeet Mondal</strong> | MERN Stack Todo Website
+          Developed by <strong>Jeet Mondal</strong> | Secure MERN Todo Website
         </p>
 
         <div className="footer-links">
